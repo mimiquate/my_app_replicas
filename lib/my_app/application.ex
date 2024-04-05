@@ -9,7 +9,6 @@ defmodule MyApp.Application do
   def start(_type, _args) do
     children = [
       MyAppWeb.Telemetry,
-      MyApp.Repo,
       {DNSCluster, query: Application.get_env(:my_app, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: MyApp.PubSub},
       # Start the Finch HTTP client for sending emails
@@ -18,12 +17,30 @@ defmodule MyApp.Application do
       # {MyApp.Worker, arg},
       # Start to serve requests, typically the last entry
       MyAppWeb.Endpoint
+      | repos()
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: MyApp.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  defp repos do
+    [MyApp.Repo | replicas()]
+  end
+
+  defp replicas do
+    for {repo, _url} <- Application.fetch_env!(:my_app, :replicas) do
+      defmodule repo do
+        use Ecto.Repo,
+          otp_app: :my_app,
+          adapter: Ecto.Adapters.Postgres,
+          read_only: true
+      end
+
+      repo
+    end
   end
 
   # Tell Phoenix to update the endpoint configuration
